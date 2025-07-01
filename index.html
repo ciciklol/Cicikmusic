@@ -215,6 +215,9 @@
     <!-- Hidden div for YouTube IFrame Player -->
     <div id="youtube-player-container"></div>
 
+    <!-- Audio element for background playback -->
+    <audio id="background-audio" crossorigin="anonymous"></audio>
+
     <script>
         // --- Global Variables and DOM Elements ---
         const searchInput = document.getElementById('search-input');
@@ -238,7 +241,7 @@
         const volumeSlider = document.getElementById('volume-slider');
         const muteButton = document.getElementById('mute-button');
         const volumeIcon = document.getElementById('volume-icon');
-
+        const backgroundAudio = document.getElementById('background-audio');
 
         const sidebar = document.getElementById('sidebar');
         const openSidebarButton = document.getElementById('open-sidebar');
@@ -255,6 +258,9 @@
         let currentPlayingIndex = -1; // Index of the currently playing video in currentContentList
         let updateProgressBarInterval; // Interval for updating the progress bar
         let lastVolume = 100; // Store last non-zero volume for mute/unmute
+        let isUsingBackgroundAudio = false; // Flag to track if we're using the background audio element
+        let audioContext; // Web Audio API context
+        let audioSource; // Web Audio API source node
 
 
         // YouTube Data API Key - PASTE YOUR KEY HERE!
@@ -270,7 +276,6 @@
             { id: { videoId: 'dQw4w9WgXcQ' }, snippet: { title: 'Rick Astley - Never Gonna Give You Up (Official Music Video)', channelTitle: 'RickAstleyVEVO', thumbnails: { default: { url: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/default.jpg' }, medium: { url: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg' } } } }, // This one is usually embeddable
             { id: { videoId: 'y6120QO-W3w' }, snippet: { title: 'Queen - Bohemian Rhapsody (Official Video Remastered)', channelTitle: 'QueenOfficial', thumbnails: { default: { url: 'https://i.ytimg.com/vi/y6120QO-W3w/default.jpg' }, medium: { url: 'https://i.ytimg.com/vi/y6120QO-W3w/mqdefault.jpg' } } } } // This one is usually embeddable
         ];
-
 
         // --- Utility Functions ---
 
@@ -305,6 +310,20 @@
          * Updates the volume icon based on the player's mute state or volume level.
          */
         function updateVolumeIcon() {
+            if (isUsingBackgroundAudio) {
+                if (backgroundAudio.muted || backgroundAudio.volume === 0) {
+                    volumeIcon.classList.remove('fa-volume-up', 'fa-volume-down');
+                    volumeIcon.classList.add('fa-volume-mute');
+                } else if (backgroundAudio.volume < 0.5) {
+                    volumeIcon.classList.remove('fa-volume-up', 'fa-volume-mute');
+                    volumeIcon.classList.add('fa-volume-down');
+                } else {
+                    volumeIcon.classList.remove('fa-volume-down', 'fa-volume-mute');
+                    volumeIcon.classList.add('fa-volume-up');
+                }
+                return;
+            }
+
             if (!player || typeof player.isMuted !== 'function') {
                 // If player not ready, base on slider value
                 if (volumeSlider.value == 0) {
@@ -335,6 +354,96 @@
             }
         }
 
+        /**
+         * Initializes the Web Audio API for background playback
+         */
+        function initAudioContext() {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioContext = new AudioContext();
+                
+                // Create a media element source node
+                audioSource = audioContext.createMediaElementSource(backgroundAudio);
+                audioSource.connect(audioContext.destination);
+                
+                console.log('AudioContext initialized successfully');
+            } catch (e) {
+                console.error('Error initializing AudioContext:', e);
+            }
+        }
+
+        /**
+         * Handles visibility changes to maintain audio playback
+         */
+        function handleVisibilityChange() {
+            if (document.hidden) {
+                console.log('Page is hidden - switching to background audio if needed');
+                if (player && player.getPlayerState && player.getPlayerState() === YT.PlayerState.PLAYING) {
+                    switchToBackgroundAudio();
+                }
+            } else {
+                console.log('Page is visible');
+                // Optionally switch back to YouTube player when page is visible
+            }
+        }
+
+        /**
+         * Switches playback to the background audio element
+         */
+        function switchToBackgroundAudio() {
+            if (!currentVideoId) return;
+            
+            console.log('Switching to background audio');
+            
+            // Pause YouTube player
+            if (player && player.pauseVideo) {
+                player.pauseVideo();
+            }
+            
+            // Set up background audio
+            backgroundAudio.src = `https://youtube-audio-server.vercel.app/audio/${currentVideoId}`;
+            backgroundAudio.currentTime = player.getCurrentTime();
+            backgroundAudio.play()
+                .then(() => {
+                    isUsingBackgroundAudio = true;
+                    console.log('Background audio playing');
+                    
+                    // Update UI to reflect playing state
+                    playPauseButton.innerHTML = '<i class="fas fa-pause-circle text-4xl"></i>';
+                    startProgressBarUpdate();
+                })
+                .catch(e => {
+                    console.error('Background audio playback failed:', e);
+                    // Fall back to YouTube player if possible
+                    if (player && player.playVideo) {
+                        player.playVideo();
+                        isUsingBackgroundAudio = false;
+                    }
+                });
+        }
+
+        /**
+         * Switches playback back to YouTube player
+         */
+        function switchToYouTubePlayer() {
+            if (!currentVideoId) return;
+            
+            console.log('Switching to YouTube player');
+            
+            // Pause background audio
+            backgroundAudio.pause();
+            isUsingBackgroundAudio = false;
+            
+            // Play YouTube player
+            if (player && player.playVideo) {
+                player.seekTo(backgroundAudio.currentTime, true);
+                player.playVideo();
+                
+                // Update UI to reflect playing state
+                playPauseButton.innerHTML = '<i class="fas fa-pause-circle text-4xl"></i>';
+                startProgressBarUpdate();
+            }
+        }
 
         // --- YouTube IFrame Player API Functions ---
 
@@ -355,7 +464,6 @@
                     'modestbranding': 1, /* Remove YouTube logo */
                     'rel': 0, /* Do not show related videos */
                     'iv_load_policy': 3, /* Do not show annotations */
-                    // REMOVED MUTE PARAMETER TO FIX SOUND ISSUE
                 },
                 events: {
                     'onReady': onPlayerReady,
@@ -374,17 +482,15 @@
             // Set initial volume slider to last known volume.
             volumeSlider.value = lastVolume;
             player.setVolume(lastVolume);
-            // REMOVED MUTE CALL TO FIX SOUND ISSUE
-            updateVolumeIcon(); // Update icon to reflect muted state
+            updateVolumeIcon();
 
             // If no video is currently selected, cue the first library video
-            // and update UI, but don't autoplay without explicit user interaction on load.
             if (!currentVideoId && libraryVideos.length > 0) {
                 const firstVideo = libraryVideos[0];
-                player.cueVideoById(firstVideo.id.videoId); // Cue the video, don't play automatically
+                player.cueVideoById(firstVideo.id.videoId);
                 updateCurrentTrackInfo(firstVideo.snippet.title, firstVideo.snippet.channelTitle, firstVideo.snippet.thumbnails.default.url);
-                currentVideoId = firstVideo.id.videoId; // Set currentVideoId for initial state
-                currentPlayingIndex = 0; // Set currentPlayingIndex for initial state
+                currentVideoId = firstVideo.id.videoId;
+                currentPlayingIndex = 0;
                 console.log(`onPlayerReady: Cued initial video: ${firstVideo.snippet.title}`);
             }
         }
@@ -400,7 +506,7 @@
             if (playerState === YT.PlayerState.PLAYING) {
                 playPauseButton.innerHTML = '<i class="fas fa-pause-circle text-4xl"></i>';
                 startProgressBarUpdate();
-                // Ensure duration is set when playing starts
+                
                 if (player && typeof player.getDuration === 'function' && totalDurationSpan.textContent === '0:00') {
                     const duration = player.getDuration();
                     totalDurationSpan.textContent = formatTime(duration);
@@ -408,8 +514,6 @@
                     console.log(`onPlayerStateChange: Video duration set to ${duration} seconds.`);
                 }
             } else if (playerState === YT.PlayerState.CUED) {
-                // If the video is cued (loaded but not playing), and it was triggered by a user click,
-                // then attempt to play it. This is the critical point for autoplay on mobile.
                 if (player && typeof player.playVideo === 'function' && currentVideoId) {
                     player.playVideo();
                     console.log('onPlayerStateChange: Video cued, attempting to play.');
@@ -423,7 +527,7 @@
                 console.log('onPlayerStateChange: Video ended. Playing next track.');
                 playNextTrack();
             }
-            updateVolumeIcon(); // Update volume icon on state change
+            updateVolumeIcon();
         }
 
         /**
@@ -450,8 +554,7 @@
             }
             showMessage(`Video Playback Error: ${errorMessage}`);
             console.log('onPlayerError: Attempting to play next track due to error.');
-            // Attempt to play the next track if an error occurs
-            playNextTrack(true); // Pass true to indicate an error occurred, so we don't try to play the same problematic video again
+            playNextTrack(true);
         }
 
         /**
@@ -472,19 +575,16 @@
             currentVideoId = videoId;
             currentPlayingIndex = index;
 
-            // Load the video. The actual play command will be handled by onPlayerStateChange when CUED.
+            // First try with YouTube player
             player.loadVideoById(videoId);
-            // REMOVED MUTE CALL TO FIX SOUND ISSUE
-
             updateCurrentTrackInfo(title, channel, thumbnailUrl);
-            playPauseButton.innerHTML = '<i class="fas fa-play-circle text-4xl"></i>'; // Set to play icon initially, as it's cued not playing
+            playPauseButton.innerHTML = '<i class="fas fa-play-circle text-4xl"></i>';
 
             // Reset progress bar
             progressBar.value = 0;
             currentTimeSpan.textContent = '0:00';
             totalDurationSpan.textContent = '0:00';
-
-            // Duration will be updated in onPlayerStateChange when playing starts
+            isUsingBackgroundAudio = false;
         }
 
         /**
@@ -511,19 +611,28 @@
                 clearInterval(updateProgressBarInterval);
             }
             updateProgressBarInterval = setInterval(() => {
-                if (player && typeof player.getCurrentTime === 'function' && typeof player.getDuration === 'function') {
+                if (isUsingBackgroundAudio) {
+                    if (!isNaN(backgroundAudio.duration) {
+                        progressBar.value = backgroundAudio.currentTime;
+                        currentTimeSpan.textContent = formatTime(backgroundAudio.currentTime);
+                        
+                        if (totalDurationSpan.textContent === '0:00' && backgroundAudio.duration > 0) {
+                            totalDurationSpan.textContent = formatTime(backgroundAudio.duration);
+                            progressBar.max = backgroundAudio.duration;
+                        }
+                    }
+                } else if (player && typeof player.getCurrentTime === 'function' && typeof player.getDuration === 'function') {
                     const currentTime = player.getCurrentTime();
                     const duration = player.getDuration();
                     progressBar.value = currentTime;
                     currentTimeSpan.textContent = formatTime(currentTime);
 
-                    // Update total duration if it wasn't set or changed
                     if (totalDurationSpan.textContent === '0:00' && duration > 0) {
                         totalDurationSpan.textContent = formatTime(duration);
                         progressBar.max = duration;
                     }
                 }
-            }, 1000); // Update every second
+            }, 1000);
         }
 
         /**
@@ -540,6 +649,25 @@
          */
         function togglePlayPause() {
             console.log('togglePlayPause: button clicked.');
+            if (isUsingBackgroundAudio) {
+                if (backgroundAudio.paused) {
+                    backgroundAudio.play()
+                        .then(() => {
+                            playPauseButton.innerHTML = '<i class="fas fa-pause-circle text-4xl"></i>';
+                            startProgressBarUpdate();
+                        })
+                        .catch(e => {
+                            console.error('Background audio play failed:', e);
+                            showMessage("Playback failed. Please try again.");
+                        });
+                } else {
+                    backgroundAudio.pause();
+                    playPauseButton.innerHTML = '<i class="fas fa-play-circle text-4xl"></i>';
+                    stopProgressBarUpdate();
+                }
+                return;
+            }
+
             if (!player || !currentVideoId) {
                 showMessage("No video selected. Please search for a video or select one from 'Your Library' to play.");
                 console.warn('togglePlayPause: No video selected or player not ready.');
@@ -562,8 +690,14 @@
             console.log('playNextTrack: Attempting to play next track.');
             if (currentContentList.length === 0) {
                 showMessage("No more songs in the current list.");
-                // If there's an error and no more songs, stop playback
-                if (player && typeof player.stopVideo === 'function') {
+                if (isUsingBackgroundAudio) {
+                    backgroundAudio.pause();
+                    updateCurrentTrackInfo("No Track", "Search for a song", "https://placehold.co/64x64/1DB954/FFFFFF?text=No+Track");
+                    progressBar.value = 0;
+                    currentTimeSpan.textContent = '0:00';
+                    totalDurationSpan.textContent = '0:00';
+                    stopProgressBarUpdate();
+                } else if (player && typeof player.stopVideo === 'function') {
                     player.stopVideo();
                     updateCurrentTrackInfo("No Track", "Search for a song", "https://placehold.co/64x64/1DB954/FFFFFF?text=No+Track");
                     progressBar.value = 0;
@@ -576,7 +710,6 @@
             }
 
             let nextIndex = currentPlayingIndex + 1;
-            // Loop back to the beginning if at the end of the list
             if (nextIndex >= currentContentList.length) {
                 nextIndex = 0;
                 console.log('playNextTrack: Looping back to the beginning of the list.');
@@ -607,7 +740,6 @@
                 return;
             }
             let prevIndex = currentPlayingIndex - 1;
-            // Loop to the end if at the beginning of the list
             if (prevIndex < 0) {
                 prevIndex = currentContentList.length - 1;
                 console.log('playPrevTrack: Looping to the end of the list.');
@@ -633,8 +765,8 @@
          * @param {Array} videos - An array of video objects.
          */
         function displayVideos(videos) {
-            resultsContainer.innerHTML = ''; // Clear previous content
-            initialMessage.classList.add('hidden'); // Hide initial message
+            resultsContainer.innerHTML = '';
+            initialMessage.classList.add('hidden');
             console.log(`displayVideos: Displaying ${videos.length} videos.`);
 
             if (videos.length === 0) {
@@ -646,7 +778,7 @@
                 const videoId = video.id.videoId;
                 const title = video.snippet.title;
                 const channel = video.snippet.channelTitle;
-                const thumbnailUrl = video.snippet.thumbnails.medium.url; // Use medium for better quality
+                const thumbnailUrl = video.snippet.thumbnails.medium.url;
 
                 const videoCard = document.createElement('div');
                 videoCard.className = 'bg-[#282828] rounded-lg p-4 cursor-pointer hover:bg-[#3e3e3e] transition-colors duration-200 shadow-md flex flex-col items-center text-center';
@@ -673,8 +805,8 @@
                 <br><br>
                 <strong>Click on a video card or the Play button to start music.</strong>
             `;
-            currentContentList = []; // Clear the current content list
-            currentPlayingIndex = -1; // Reset playing index
+            currentContentList = [];
+            currentPlayingIndex = -1;
             updateActiveNavLink(navHome);
         }
 
@@ -683,13 +815,13 @@
          */
         function showSearchView() {
             console.log('showSearchView: Displaying Search view.');
-            searchSection.classList.remove('hidden'); // Ensure search bar is visible
-            resultsContainer.innerHTML = ''; // Clear existing results
+            searchSection.classList.remove('hidden');
+            resultsContainer.innerHTML = '';
             initialMessage.classList.add('hidden');
-            currentContentList = []; // Clear the current content list
-            currentPlayingIndex = -1; // Reset playing index
+            currentContentList = [];
+            currentPlayingIndex = -1;
             updateActiveNavLink(navSearch);
-            searchInput.focus(); // Focus on search input
+            searchInput.focus();
         }
 
         /**
@@ -699,7 +831,7 @@
             console.log('showLibraryView: Displaying Library view.');
             searchSection.classList.add('hidden');
             initialMessage.classList.add('hidden');
-            currentContentList = libraryVideos; // Set content list to library videos
+            currentContentList = libraryVideos;
             displayVideos(libraryVideos);
             updateActiveNavLink(navLibrary);
         }
@@ -732,10 +864,9 @@
             }
 
             loadingIndicator.classList.remove('hidden');
-            resultsContainer.innerHTML = ''; // Clear previous results
-            currentContentList = []; // Clear previous search results
+            resultsContainer.innerHTML = '';
+            currentContentList = [];
 
-            // Added videoEmbeddable=true to prioritize embeddable videos
             const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=20&videoEmbeddable=true&key=${apiKey}`;
 
             try {
@@ -747,7 +878,7 @@
                     return;
                 }
                 const data = await response.json();
-                currentContentList = data.items; // Set current content list to search results
+                currentContentList = data.items;
                 displayVideos(currentContentList);
                 console.log(`searchYouTubeVideos: Found ${data.items.length} results.`);
             } catch (error) {
@@ -788,46 +919,68 @@
 
         // Progress bar seek
         progressBar.addEventListener('input', () => {
-            if (player && typeof player.seekTo === 'function') {
-                player.seekTo(progressBar.value, true); // Seek to the new position
+            if (isUsingBackgroundAudio) {
+                backgroundAudio.currentTime = progressBar.value;
+            } else if (player && typeof player.seekTo === 'function') {
+                player.seekTo(progressBar.value, true);
             }
         });
 
         // Volume slider change
         volumeSlider.addEventListener('input', () => {
-            if (player && typeof player.setVolume === 'function') {
-                const newVolume = parseInt(volumeSlider.value);
-                player.setVolume(newVolume);
-                lastVolume = newVolume; // Store last volume
-                updateVolumeIcon(); // Update icon when slider changes
-
-                // If slider is moved up from 0 while muted, unmute
-                if (player.isMuted() && newVolume > 0) {
+            const newVolume = parseInt(volumeSlider.value) / 100;
+            if (isUsingBackgroundAudio) {
+                backgroundAudio.volume = newVolume;
+                backgroundAudio.muted = newVolume === 0;
+            } else if (player && typeof player.setVolume === 'function') {
+                player.setVolume(parseInt(volumeSlider.value));
+                lastVolume = parseInt(volumeSlider.value);
+                
+                if (player.isMuted() && parseInt(volumeSlider.value) > 0) {
                     player.unMute();
-                } else if (!player.isMuted() && newVolume === 0) {
-                    // If slider is moved to 0 while not muted, mute
+                } else if (!player.isMuted() && parseInt(volumeSlider.value) === 0) {
                     player.mute();
                 }
-            }
-        });
-
-        // Mute button click
-        muteButton.addEventListener('click', () => {
-            if (!player) return;
-            if (player.isMuted()) {
-                player.unMute();
-                // Restore volume to last non-zero volume, or 50 if it was 0
-                const restoreVolume = lastVolume > 0 ? lastVolume : 50;
-                player.setVolume(restoreVolume);
-                volumeSlider.value = restoreVolume;
-            } else {
-                lastVolume = player.getVolume(); // Save current volume before muting
-                player.mute();
-                volumeSlider.value = 0; // Move slider to 0 visually
             }
             updateVolumeIcon();
         });
 
+        // Mute button click
+        muteButton.addEventListener('click', () => {
+            if (isUsingBackgroundAudio) {
+                backgroundAudio.muted = !backgroundAudio.muted;
+                if (!backgroundAudio.muted && backgroundAudio.volume === 0) {
+                    backgroundAudio.volume = lastVolume / 100;
+                    volumeSlider.value = lastVolume;
+                }
+            } else if (player) {
+                if (player.isMuted()) {
+                    player.unMute();
+                    const restoreVolume = lastVolume > 0 ? lastVolume : 50;
+                    player.setVolume(restoreVolume);
+                    volumeSlider.value = restoreVolume;
+                } else {
+                    lastVolume = player.getVolume();
+                    player.mute();
+                    volumeSlider.value = 0;
+                }
+            }
+            updateVolumeIcon();
+        });
+
+        // Background audio events
+        backgroundAudio.addEventListener('ended', () => {
+            console.log('Background audio ended. Playing next track.');
+            playNextTrack();
+        });
+
+        backgroundAudio.addEventListener('error', (e) => {
+            console.error('Background audio error:', e);
+            // Fall back to YouTube player if possible
+            if (player && player.playVideo) {
+                switchToYouTubePlayer();
+            }
+        });
 
         // Close message box
         messageCloseButton.addEventListener('click', hideMessageBox);
@@ -862,16 +1015,25 @@
             showLibraryView();
         });
 
+        // Initialize Web Audio API
+        document.addEventListener('DOMContentLoaded', () => {
+            initAudioContext();
+            showHomeView();
+            
+            // Set up visibility change handler
+            document.addEventListener('visibilitychange', handleVisibilityChange);
+            
+            // Request notification permission (for potential future use)
+            if ('Notification' in window) {
+                Notification.requestPermission();
+            }
+        });
 
-        // --- Initialize YouTube IFrame Player API ---
-        // Load the IFrame Player API code asynchronously.
+        // Initialize YouTube IFrame Player API
         const tag = document.createElement('script');
         tag.src = "https://www.youtube.com/iframe_api";
         const firstScriptTag = document.getElementsByTagName('script')[0];
         firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-
-        // Initial view on page load
-        document.addEventListener('DOMContentLoaded', showHomeView);
 
     </script>
 </body>
