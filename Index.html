@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cicik Music</title>
+    <!-- Tailwind CSS CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Custom scrollbar for a cleaner look */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #282828; /* Spotify dark grey */
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #535353; /* Darker grey for thumb */
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a7a7a7; /* Lighter grey on hover */
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #121212; /* Spotify background */
+            color: #b3b3b3; /* Light grey text */
+            overflow: hidden; /* Prevent body scroll, content will scroll */
+        }
+
+        /* Ensure the YouTube iframe is hidden but exists for API interaction */
+        #youtube-player-container {
+            position: absolute;
+            top: -9999px; /* Off-screen */
+            left: -9999px; /* Off-screen */
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+        }
+
+        /* Custom styling for range inputs (sliders) */
+        input[type="range"] {
+            -webkit-appearance: none; /* Override default appearance */
+            appearance: none;
+            background: transparent; /* Hide default track */
+            cursor: pointer;
+            width: 100%;
+        }
+
+        /* Track styling */
+        input[type="range"]::-webkit-slider-runnable-track {
+            background: #535353; /* Grey track */
+            height: 4px;
+            border-radius: 2px;
+        }
+        input[type="range"]::-moz-range-track {
+            background: #535353;
+            height: 4px;
+            border-radius: 2px;
+        }
+
+        /* Thumb styling */
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; /* Override default appearance */
+            appearance: none;
+            margin-top: -6px; /* Center thumb vertically on track */
+            background-color: #1DB954; /* Spotify green */
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            border: none;
+            transition: background-color 0.2s ease-in-out;
+        }
+        input[type="range"]:hover::-webkit-slider-thumb {
+            background-color: #1ED760; /* Lighter green on hover */
+        }
+        input[type="range"]:hover::-moz-range-thumb {
+            background-color: #1ED760;
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen">
+
+    <!-- Main Container -->
+    <div class="flex flex-1 overflow-hidden">
+
+        <!-- Sidebar (Hidden on mobile, visible on larger screens) -->
+        <aside id="sidebar" class="fixed inset-y-0 left-0 w-64 bg-black text-white p-4 flex flex-col transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out z-20 md:relative md:flex-shrink-0 md:w-64 rounded-r-lg">
+            <!-- Close button for mobile sidebar -->
+            <button id="close-sidebar" class="absolute top-4 right-4 text-white md:hidden focus:outline-none">
+                <i class="fas fa-times text-2xl"></i>
+            </button>
+
+            <div class="mb-8">
+                <h1 class="text-2xl font-bold text-green-500">
+                    <i class="fab fa-spotify mr-2"></i>Cicik Music
+                </h1>
+            </div>
+            <nav class="flex-1">
+                <ul>
+                    <li class="mb-4">
+                        <a href="#" id="nav-home" class="flex items-center text-lg text-gray-300 hover:text-white transition-colors duration-200 p-2 rounded-md hover:bg-gray-800">
+                            <i class="fas fa-home mr-3"></i> Home
+                        </a>
+                    </li>
+                    <li class="mb-4">
+                        <a href="#" id="nav-search" class="flex items-center text-lg text-white font-semibold p-2 rounded-md bg-gray-800">
+                            <i class="fas fa-search mr-3"></i> Search
+                        </a>
+                    </li>
+                    <li class="mb-4">
+                        <a href="#" id="nav-library" class="flex items-center text-lg text-gray-300 hover:text-white transition-colors duration-200 p-2 rounded-md hover:bg-gray-800">
+                            <i class="fas fa-book mr-3"></i> Your Library
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 flex flex-col bg-[#121212] p-4 md:p-6 overflow-y-auto z-10">
+            <!-- Mobile header with menu button -->
+            <header class="flex items-center justify-between md:hidden mb-4">
+                <button id="open-sidebar" class="text-white focus:outline-none">
+                    <i class="fas fa-bars text-2xl"></i>
+                </button>
+                <h1 class="text-2xl font-bold text-green-500">Cicik Music</h1>
+            </header>
+
+            <!-- Search Bar (Visible only on Search tab) -->
+            <div id="search-section" class="bg-[#282828] p-4 rounded-lg shadow-lg mb-6 flex items-center space-x-3">
+                <input type="text" id="search-input" placeholder="Search for songs or artists..." class="flex-1 p-3 rounded-full bg-[#3e3e3e] text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 border border-transparent">
+                <button id="search-button" class="bg-green-500 text-white p-3 rounded-full hover:bg-green-600 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-green-500">
+                    <i class="fas fa-search"></i>
+                </button>
+            </div>
+
+            <!-- Content Area for Search Results or Library -->
+            <div id="results-container" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 overflow-y-auto flex-1 pb-24">
+                <!-- Dynamic content (search results or library items) will be loaded here -->
+                <div id="initial-message" class="text-center text-gray-400 text-lg mt-10 w-full col-span-full">
+                    Welcome to Cicik Music! Search for a song or artist to get started, or explore your library.
+                    <br><br>
+                    <strong>Click on a video card or the Play button to start music.</strong>
+                </div>
+            </div>
+
+            <!-- Loading Indicator -->
+            <div id="loading-indicator" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+                <div class="flex flex-col items-center">
+                    <i class="fas fa-spinner fa-spin text-green-500 text-5xl mb-4"></i>
+                    <p class="text-white text-xl">Loading...</p>
+                </div>
+            </div>
+
+            <!-- Custom Message Box -->
+            <div id="message-box" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+                <div class="bg-[#282828] p-6 rounded-lg shadow-xl text-white text-center max-w-sm w-full">
+                    <p id="message-content" class="text-lg mb-4"></p>
+                    <button id="message-close-button" class="bg-green-500 text-white px-6 py-2 rounded-full hover:bg-green-600 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-green-500">
+                        OK
+                    </button>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Player Bar (Fixed at the bottom) -->
+    <footer class="fixed bottom-0 left-0 right-0 bg-[#282828] p-4 flex flex-col md:flex-row items-center justify-between z-30 rounded-t-lg shadow-lg">
+        <!-- Current Song Info -->
+        <div class="flex items-center mb-4 md:mb-0 w-full md:w-1/3">
+            <img id="current-track-art" src="https://placehold.co/64x64/1DB954/FFFFFF?text=No+Track" alt="Album Art" class="w-16 h-16 rounded-md mr-4 shadow-md">
+            <div class="flex flex-col">
+                <span id="current-track-name" class="text-white text-lg font-semibold truncate">Not playing</span>
+                <span id="current-track-artist" class="text-gray-400 text-sm truncate">Search for a song</span>
+            </div>
+        </div>
+
+        <!-- Playback Controls -->
+        <div class="flex flex-col items-center w-full md:w-1/3">
+            <div class="flex items-center space-x-6 mb-2">
+                <button id="prev-track-button" class="text-gray-400 hover:text-white transition-colors duration-200 focus:outline-none">
+                    <i class="fas fa-step-backward text-xl"></i>
+                </button>
+                <button id="play-pause-button" class="text-white hover:text-green-500 transition-colors duration-200 focus:outline-none">
+                    <i class="fas fa-play-circle text-4xl"></i>
+                </button>
+                <button id="next-track-button" class="text-gray-400 hover:text-white transition-colors duration-200 focus:outline-none">
+                    <i class="fas fa-step-forward text-xl"></i>
+                </button>
+            </div>
+            <!-- Progress Bar -->
+            <div class="flex items-center w-full max-w-md space-x-2">
+                <span id="current-time" class="text-xs text-gray-400">0:00</span>
+                <input type="range" id="progress-bar" value="0" min="0" max="100" class="flex-1">
+                <span id="total-duration" class="text-xs text-gray-400">0:00</span>
+            </div>
+        </div>
+
+        <!-- Volume Control -->
+        <div class="flex items-center w-full md:w-1/3 justify-end mt-4 md:mt-0">
+            <!-- Mute/Unmute Button -->
+            <button id="mute-button" class="text-gray-400 hover:text-white transition-colors duration-200 focus:outline-none mr-2">
+                <i class="fas fa-volume-up text-xl" id="volume-icon"></i>
+            </button>
+            <input type="range" id="volume-slider" value="100" min="0" max="100" class="w-24">
+        </div>
+    </footer>
+
+    <!-- Hidden div for YouTube IFrame Player -->
+    <div id="youtube-player-container"></div>
+
+    <script>
+        // --- Global Variables and DOM Elements ---
+        const searchInput = document.getElementById('search-input');
+        const searchButton = document.getElementById('search-button');
+        const resultsContainer = document.getElementById('results-container');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const messageBox = document.getElementById('message-box');
+        const messageContent = document.getElementById('message-content');
+        const messageCloseButton = document.getElementById('message-close-button');
+        const initialMessage = document.getElementById('initial-message');
+
+        const currentTrackArt = document.getElementById('current-track-art');
+        const currentTrackName = document.getElementById('current-track-name');
+        const currentTrackArtist = document.getElementById('current-track-artist');
+        const playPauseButton = document.getElementById('play-pause-button');
+        const prevTrackButton = document.getElementById('prev-track-button');
+        const nextTrackButton = document.getElementById('next-track-button');
+        const progressBar = document.getElementById('progress-bar');
+        const currentTimeSpan = document.getElementById('current-time');
+        const totalDurationSpan = document.getElementById('total-duration');
+        const volumeSlider = document.getElementById('volume-slider');
+        const muteButton = document.getElementById('mute-button');
+        const volumeIcon = document.getElementById('volume-icon');
+
+
+        const sidebar = document.getElementById('sidebar');
+        const openSidebarButton = document.getElementById('open-sidebar');
+        const closeSidebarButton = document.getElementById('close-sidebar');
+
+        const navHome = document.getElementById('nav-home');
+        const navSearch = document.getElementById('nav-search');
+        const navLibrary = document.getElementById('nav-library');
+        const searchSection = document.getElementById('search-section');
+
+        let player; // YouTube Player object
+        let currentVideoId = null;
+        let currentContentList = []; // Stores either searchResults or libraryVideos
+        let currentPlayingIndex = -1; // Index of the currently playing video in currentContentList
+        let updateProgressBarInterval; // Interval for updating the progress bar
+        let lastVolume = 100; // Store last non-zero volume for mute/unmute
+
+
+        // YouTube Data API Key - PASTE YOUR KEY HERE!
+        // Make sure this key is correctly set for search functionality to work.
+        const apiKey = "AIzaSyCXpqMLDt3oVWYaQ94KRaBM1emFSzi8VTo"; // <--- YOUR KEY IS HERE!
+
+        // --- Static Library Videos (Example - you can customize this) ---
+        // These are generally more embeddable videos.
+        const libraryVideos = [
+            { id: { videoId: 'LXb3EKWsInQ' }, snippet: { title: 'Lofi Hip Hop Radio - Beats to Relax/Study to', channelTitle: 'Lofi Girl', thumbnails: { default: { url: 'https://i.ytimg.com/vi/LXb3EKWsInQ/default.jpg' }, medium: { url: 'https://i.ytimg.com/vi/LXb3EKWsInQ/mqdefault.jpg' } } } },
+            { id: { videoId: 'jfKfPfyDnLM' }, snippet: { title: 'Jazz Music - Relaxing Background Jazz Music for Studying, Work, Dinner', channelTitle: 'Relaxing Jazz Music', thumbnails: { default: { url: 'https://i.ytimg.com/vi/jfKfPfyDnLM/default.jpg' }, medium: { url: 'https://i.ytimg.com/vi/jfKfPfyDnLM/mqdefault.jpg' } } } },
+            { id: { videoId: '5qap5aO4i9A' }, snippet: { title: 'Nature Sounds - Relaxing River Sounds for Sleep, Study, Meditate', channelTitle: 'Relaxing White Noise', thumbnails: { default: { url: 'https://i.ytimg.com/vi/5qap5aO4i9A/default.jpg' }, medium: { url: 'https://i.ytimg.com/vi/5qap5aO4i9A/mqdefault.jpg' } } } },
+            { id: { videoId: 'dQw4w9WgXcQ' }, snippet: { title: 'Rick Astley - Never Gonna Give You Up (Official Music Video)', channelTitle: 'RickAstleyVEVO', thumbnails: { default: { url: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/default.jpg' }, medium: { url: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg' } } } }, // This one is usually embeddable
+            { id: { videoId: 'y6120QO-W3w' }, snippet: { title: 'Queen - Bohemian Rhapsody (Official Video Remastered)', channelTitle: 'QueenOfficial', thumbnails: { default: { url: 'https://i.ytimg.com/vi/y6120QO-W3w/default.jpg' }, medium: { url: 'https://i.ytimg.com/vi/y6120QO-W3w/mqdefault.jpg' } } } } // This one is usually embeddable
+        ];
+
+
+        // --- Utility Functions ---
+
+        /**
+         * Displays a custom message box with the given message.
+         * @param {string} message - The message to display.
+         */
+        function showMessage(message) {
+            messageContent.textContent = message;
+            messageBox.classList.remove('hidden');
+        }
+
+        /**
+         * Hides the custom message box.
+         */
+        function hideMessageBox() {
+            messageBox.classList.add('hidden');
+        }
+
+        /**
+         * Formats time in seconds to MM:SS format.
+         * @param {number} seconds - The time in seconds.
+         * @returns {string} Formatted time string.
+         */
+        function formatTime(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = Math.floor(seconds % 60);
+            return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
+        }
+
+        /**
+         * Updates the volume icon based on the player's mute state or volume level.
+         */
+        function updateVolumeIcon() {
+            if (!player || typeof player.isMuted !== 'function') {
+                // If player not ready, base on slider value
+                if (volumeSlider.value == 0) {
+                    volumeIcon.classList.remove('fa-volume-up', 'fa-volume-down');
+                    volumeIcon.classList.add('fa-volume-mute');
+                } else if (volumeSlider.value < 50) {
+                    volumeIcon.classList.remove('fa-volume-up', 'fa-volume-mute');
+                    volumeIcon.classList.add('fa-volume-down');
+                } else {
+                    volumeIcon.classList.remove('fa-volume-down', 'fa-volume-mute');
+                    volumeIcon.classList.add('fa-volume-up');
+                }
+                return;
+            }
+
+            if (player.isMuted()) {
+                volumeIcon.classList.remove('fa-volume-up', 'fa-volume-down');
+                volumeIcon.classList.add('fa-volume-mute');
+            } else if (player.getVolume() === 0) {
+                volumeIcon.classList.remove('fa-volume-up', 'fa-volume-mute');
+                volumeIcon.classList.add('fa-volume-down');
+            } else if (player.getVolume() < 50) {
+                volumeIcon.classList.remove('fa-volume-up', 'fa-volume-mute');
+                volumeIcon.classList.add('fa-volume-down');
+            } else {
+                volumeIcon.classList.remove('fa-volume-down', 'fa-volume-mute');
+                volumeIcon.classList.add('fa-volume-up');
+            }
+        }
+
+
+        // --- YouTube IFrame Player API Functions ---
+
+        /**
+         * This function creates an <iframe> (and YouTube player)
+         * after the API code downloads.
+         */
+        function onYouTubeIframeAPIReady() {
+            console.log('onYouTubeIframeAPIReady: YouTube IFrame Player API is ready.');
+            player = new YT.Player('youtube-player-container', {
+                height: '1', /* Minimal height as it's hidden */
+                width: '1',  /* Minimal width as it's hidden */
+                videoId: '', /* No initial video */
+                playerVars: {
+                    'controls': 0, /* Hide YouTube's default controls */
+                    'autoplay': 0, /* Do not autoplay initially */
+                    'disablekb': 1, /* Disable keyboard controls */
+                    'modestbranding': 1, /* Remove YouTube logo */
+                    'rel': 0, /* Do not show related videos */
+                    'iv_load_policy': 3, /* Do not show annotations */
+                    // REMOVED MUTE PARAMETER TO FIX SOUND ISSUE
+                },
+                events: {
+                    'onReady': onPlayerReady,
+                    'onStateChange': onPlayerStateChange,
+                    'onError': onPlayerError
+                }
+            });
+        }
+
+        /**
+         * The API will call this function when the video player is ready.
+         * @param {Object} event - The event object.
+         */
+        function onPlayerReady(event) {
+            console.log('onPlayerReady: YouTube Player is ready.');
+            // Set initial volume slider to last known volume.
+            volumeSlider.value = lastVolume;
+            player.setVolume(lastVolume);
+            // REMOVED MUTE CALL TO FIX SOUND ISSUE
+            updateVolumeIcon(); // Update icon to reflect muted state
+
+            // If no video is currently selected, cue the first library video
+            // and update UI, but don't autoplay without explicit user interaction on load.
+            if (!currentVideoId && libraryVideos.length > 0) {
+                const firstVideo = libraryVideos[0];
+                player.cueVideoById(firstVideo.id.videoId); // Cue the video, don't play automatically
+                updateCurrentTrackInfo(firstVideo.snippet.title, firstVideo.snippet.channelTitle, firstVideo.snippet.thumbnails.default.url);
+                currentVideoId = firstVideo.id.videoId; // Set currentVideoId for initial state
+                currentPlayingIndex = 0; // Set currentPlayingIndex for initial state
+                console.log(`onPlayerReady: Cued initial video: ${firstVideo.snippet.title}`);
+            }
+        }
+
+        /**
+         * The API calls this function when the player's state changes.
+         * @param {Object} event - The event object (data: -1=unstarted, 0=ended, 1=playing, 2=paused, 3=buffering, 5=video cued).
+         */
+        function onPlayerStateChange(event) {
+            const playerState = event.data;
+            console.log('onPlayerStateChange: Player state changed to', playerState);
+
+            if (playerState === YT.PlayerState.PLAYING) {
+                playPauseButton.innerHTML = '<i class="fas fa-pause-circle text-4xl"></i>';
+                startProgressBarUpdate();
+                // Ensure duration is set when playing starts
+                if (player && typeof player.getDuration === 'function' && totalDurationSpan.textContent === '0:00') {
+                    const duration = player.getDuration();
+                    totalDurationSpan.textContent = formatTime(duration);
+                    progressBar.max = duration;
+                    console.log(`onPlayerStateChange: Video duration set to ${duration} seconds.`);
+                }
+            } else if (playerState === YT.PlayerState.CUED) {
+                // If the video is cued (loaded but not playing), and it was triggered by a user click,
+                // then attempt to play it. This is the critical point for autoplay on mobile.
+                if (player && typeof player.playVideo === 'function' && currentVideoId) {
+                    player.playVideo();
+                    console.log('onPlayerStateChange: Video cued, attempting to play.');
+                }
+            } else { // Paused, Buffering, Unstarted
+                playPauseButton.innerHTML = '<i class="fas fa-play-circle text-4xl"></i>';
+                stopProgressBarUpdate();
+            }
+
+            if (playerState === YT.PlayerState.ENDED) {
+                console.log('onPlayerStateChange: Video ended. Playing next track.');
+                playNextTrack();
+            }
+            updateVolumeIcon(); // Update volume icon on state change
+        }
+
+        /**
+         * Handles player errors.
+         * @param {Object} event - The error event object.
+         */
+        function onPlayerError(event) {
+            console.error('onPlayerError: YouTube Player Error:', event.data);
+            let errorMessage = "An unknown error occurred with the video player.";
+            switch (event.data) {
+                case 2:
+                    errorMessage = "The video ID is invalid or the video is restricted.";
+                    break;
+                case 5:
+                    errorMessage = "The requested content cannot be played in an HTML5 player.";
+                    break;
+                case 100:
+                    errorMessage = "Video not found or is private.";
+                    break;
+                case 101:
+                case 150:
+                    errorMessage = "This video cannot be played here due to copyright or embedding restrictions set by the uploader. Please try another video.";
+                    break;
+            }
+            showMessage(`Video Playback Error: ${errorMessage}`);
+            console.log('onPlayerError: Attempting to play next track due to error.');
+            // Attempt to play the next track if an error occurs
+            playNextTrack(true); // Pass true to indicate an error occurred, so we don't try to play the same problematic video again
+        }
+
+        /**
+         * Loads and plays a YouTube video.
+         * @param {string} videoId - The YouTube video ID.
+         * @param {string} title - The video title.
+         * @param {string} channel - The video channel name.
+         * @param {string} thumbnailUrl - The video thumbnail URL.
+         * @param {number} index - The index of the video in the currentContentList array.
+         */
+        function playVideo(videoId, title, channel, thumbnailUrl, index) {
+            console.log(`playVideo: Attempting to load videoId: ${videoId}, Title: ${title}`);
+            if (!player) {
+                showMessage("Player not ready. Please try again in a moment.");
+                console.error('playVideo: Player object is null or undefined.');
+                return;
+            }
+            currentVideoId = videoId;
+            currentPlayingIndex = index;
+
+            // Load the video. The actual play command will be handled by onPlayerStateChange when CUED.
+            player.loadVideoById(videoId);
+            // REMOVED MUTE CALL TO FIX SOUND ISSUE
+
+            updateCurrentTrackInfo(title, channel, thumbnailUrl);
+            playPauseButton.innerHTML = '<i class="fas fa-play-circle text-4xl"></i>'; // Set to play icon initially, as it's cued not playing
+
+            // Reset progress bar
+            progressBar.value = 0;
+            currentTimeSpan.textContent = '0:00';
+            totalDurationSpan.textContent = '0:00';
+
+            // Duration will be updated in onPlayerStateChange when playing starts
+        }
+
+        /**
+         * Updates the current track information displayed in the player bar.
+         * @param {string} title - The video title.
+         * @param {string} channel - The video channel name.
+         * @param {string} thumbnailUrl - The video thumbnail URL.
+         */
+        function updateCurrentTrackInfo(title, channel, thumbnailUrl) {
+            currentTrackName.textContent = title;
+            currentTrackArtist.textContent = channel;
+            currentTrackArt.src = thumbnailUrl;
+            currentTrackArt.onerror = () => {
+                currentTrackArt.src = `https://placehold.co/64x64/1DB954/FFFFFF?text=${encodeURIComponent(title.substring(0,2))}`;
+                console.warn(`updateCurrentTrackInfo: Failed to load thumbnail for ${title}. Using placeholder.`);
+            };
+        }
+
+        /**
+         * Starts the interval to update the progress bar.
+         */
+        function startProgressBarUpdate() {
+            if (updateProgressBarInterval) {
+                clearInterval(updateProgressBarInterval);
+            }
+            updateProgressBarInterval = setInterval(() => {
+                if (player && typeof player.getCurrentTime === 'function' && typeof player.getDuration === 'function') {
+                    const currentTime = player.getCurrentTime();
+                    const duration = player.getDuration();
+                    progressBar.value = currentTime;
+                    currentTimeSpan.textContent = formatTime(currentTime);
+
+                    // Update total duration if it wasn't set or changed
+                    if (totalDurationSpan.textContent === '0:00' && duration > 0) {
+                        totalDurationSpan.textContent = formatTime(duration);
+                        progressBar.max = duration;
+                    }
+                }
+            }, 1000); // Update every second
+        }
+
+        /**
+         * Stops the interval for updating the progress bar.
+         */
+        function stopProgressBarUpdate() {
+            clearInterval(updateProgressBarInterval);
+        }
+
+        // --- Playback Control Functions ---
+
+        /**
+         * Toggles play/pause state of the current video.
+         */
+        function togglePlayPause() {
+            console.log('togglePlayPause: button clicked.');
+            if (!player || !currentVideoId) {
+                showMessage("No video selected. Please search for a video or select one from 'Your Library' to play.");
+                console.warn('togglePlayPause: No video selected or player not ready.');
+                return;
+            }
+            if (player.getPlayerState() === YT.PlayerState.PLAYING) {
+                player.pauseVideo();
+                console.log('togglePlayPause: Pausing video.');
+            } else {
+                player.playVideo();
+                console.log('togglePlayPause: Playing video.');
+            }
+        }
+
+        /**
+         * Plays the next track in the current content list (search results or library).
+         * @param {boolean} fromError - True if called due to a playback error.
+         */
+        function playNextTrack(fromError = false) {
+            console.log('playNextTrack: Attempting to play next track.');
+            if (currentContentList.length === 0) {
+                showMessage("No more songs in the current list.");
+                // If there's an error and no more songs, stop playback
+                if (player && typeof player.stopVideo === 'function') {
+                    player.stopVideo();
+                    updateCurrentTrackInfo("No Track", "Search for a song", "https://placehold.co/64x64/1DB954/FFFFFF?text=No+Track");
+                    progressBar.value = 0;
+                    currentTimeSpan.textContent = '0:00';
+                    totalDurationSpan.textContent = '0:00';
+                    stopProgressBarUpdate();
+                }
+                console.warn('playNextTrack: Current content list is empty.');
+                return;
+            }
+
+            let nextIndex = currentPlayingIndex + 1;
+            // Loop back to the beginning if at the end of the list
+            if (nextIndex >= currentContentList.length) {
+                nextIndex = 0;
+                console.log('playNextTrack: Looping back to the beginning of the list.');
+            }
+
+            const nextVideo = currentContentList[nextIndex];
+            if (nextVideo) {
+                playVideo(
+                    nextVideo.id.videoId,
+                    nextVideo.snippet.title,
+                    nextVideo.snippet.channelTitle,
+                    nextVideo.snippet.thumbnails.default.url,
+                    nextIndex
+                );
+            } else {
+                console.error('playNextTrack: Next video object is undefined.');
+            }
+        }
+
+        /**
+         * Plays the previous track in the current content list (search results or library).
+         */
+        function playPrevTrack() {
+            console.log('playPrevTrack: Attempting to play previous track.');
+            if (currentContentList.length === 0 || currentPlayingIndex < 0) {
+                showMessage("No previous song in the current list.");
+                console.warn('playPrevTrack: No previous song in list or current index invalid.');
+                return;
+            }
+            let prevIndex = currentPlayingIndex - 1;
+            // Loop to the end if at the beginning of the list
+            if (prevIndex < 0) {
+                prevIndex = currentContentList.length - 1;
+                console.log('playPrevTrack: Looping to the end of the list.');
+            }
+            const prevVideo = currentContentList[prevIndex];
+            if (prevVideo) {
+                playVideo(
+                    prevVideo.id.videoId,
+                    prevVideo.snippet.title,
+                    prevVideo.snippet.channelTitle,
+                    prevVideo.snippet.thumbnails.default.url,
+                    prevIndex
+                );
+            } else {
+                console.error('playPrevTrack: Previous video object is undefined.');
+            }
+        }
+
+        // --- Content Display Functions ---
+
+        /**
+         * Displays a list of videos in the results container.
+         * @param {Array} videos - An array of video objects.
+         */
+        function displayVideos(videos) {
+            resultsContainer.innerHTML = ''; // Clear previous content
+            initialMessage.classList.add('hidden'); // Hide initial message
+            console.log(`displayVideos: Displaying ${videos.length} videos.`);
+
+            if (videos.length === 0) {
+                resultsContainer.innerHTML = '<div class="text-center text-gray-400 text-lg mt-10 w-full col-span-full">No items to display.</div>';
+                return;
+            }
+
+            videos.forEach((video, index) => {
+                const videoId = video.id.videoId;
+                const title = video.snippet.title;
+                const channel = video.snippet.channelTitle;
+                const thumbnailUrl = video.snippet.thumbnails.medium.url; // Use medium for better quality
+
+                const videoCard = document.createElement('div');
+                videoCard.className = 'bg-[#282828] rounded-lg p-4 cursor-pointer hover:bg-[#3e3e3e] transition-colors duration-200 shadow-md flex flex-col items-center text-center';
+                videoCard.innerHTML = `
+                    <img src="${thumbnailUrl}" alt="${title}" class="w-full h-auto rounded-md mb-3 shadow-sm">
+                    <h3 class="text-white font-semibold text-base mb-1 line-clamp-2">${title}</h3>
+                    <p class="text-gray-400 text-sm line-clamp-1">${channel}</p>
+                `;
+                videoCard.onclick = () => playVideo(videoId, title, channel, thumbnailUrl, index);
+                resultsContainer.appendChild(videoCard);
+            });
+        }
+
+        /**
+         * Handles displaying the Home view.
+         */
+        function showHomeView() {
+            console.log('showHomeView: Displaying Home view.');
+            searchSection.classList.add('hidden');
+            resultsContainer.innerHTML = '';
+            initialMessage.classList.remove('hidden');
+            initialMessage.innerHTML = `
+                Welcome to Cicik Music! Search for a song or artist to get started, or explore your library.
+                <br><br>
+                <strong>Click on a video card or the Play button to start music.</strong>
+            `;
+            currentContentList = []; // Clear the current content list
+            currentPlayingIndex = -1; // Reset playing index
+            updateActiveNavLink(navHome);
+        }
+
+        /**
+         * Handles displaying the Search view.
+         */
+        function showSearchView() {
+            console.log('showSearchView: Displaying Search view.');
+            searchSection.classList.remove('hidden'); // Ensure search bar is visible
+            resultsContainer.innerHTML = ''; // Clear existing results
+            initialMessage.classList.add('hidden');
+            currentContentList = []; // Clear the current content list
+            currentPlayingIndex = -1; // Reset playing index
+            updateActiveNavLink(navSearch);
+            searchInput.focus(); // Focus on search input
+        }
+
+        /**
+         * Handles displaying the Library view.
+         */
+        function showLibraryView() {
+            console.log('showLibraryView: Displaying Library view.');
+            searchSection.classList.add('hidden');
+            initialMessage.classList.add('hidden');
+            currentContentList = libraryVideos; // Set content list to library videos
+            displayVideos(libraryVideos);
+            updateActiveNavLink(navLibrary);
+        }
+
+        /**
+         * Updates the active state of navigation links.
+         * @param {HTMLElement} activeLink - The currently active navigation link element.
+         */
+        function updateActiveNavLink(activeLink) {
+            [navHome, navSearch, navLibrary].forEach(link => {
+                link.classList.remove('text-white', 'font-semibold', 'bg-gray-800');
+                link.classList.add('text-gray-300', 'hover:text-white', 'hover:bg-gray-800');
+            });
+            activeLink.classList.remove('text-gray-300', 'hover:text-white', 'hover:bg-gray-800');
+            activeLink.classList.add('text-white', 'font-semibold', 'bg-gray-800');
+        }
+
+        // --- YouTube Data API Search Function ---
+
+        /**
+         * Fetches videos from YouTube based on a search query.
+         * @param {string} query - The search term.
+         */
+        async function searchYouTubeVideos(query) {
+            console.log(`searchYouTubeVideos: Searching for "${query}"`);
+            if (!apiKey || apiKey === "YOUR_YOUTUBE_API_KEY_HERE") {
+                showMessage("YouTube API Key is missing or is the placeholder. Please replace 'YOUR_YOUTUBE_API_KEY_HERE' in the code with your actual key.");
+                console.error("searchYouTubeVideos: YouTube API Key is missing or is the placeholder.");
+                return;
+            }
+
+            loadingIndicator.classList.remove('hidden');
+            resultsContainer.innerHTML = ''; // Clear previous results
+            currentContentList = []; // Clear previous search results
+
+            // Added videoEmbeddable=true to prioritize embeddable videos
+            const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=20&videoEmbeddable=true&key=${apiKey}`;
+
+            try {
+                const response = await fetch(apiUrl);
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error('searchYouTubeVideos: YouTube Data API Error:', errorData);
+                    showMessage(`Error fetching videos: ${errorData.error.message || 'Unknown error'}. Check your API key or quota.`);
+                    return;
+                }
+                const data = await response.json();
+                currentContentList = data.items; // Set current content list to search results
+                displayVideos(currentContentList);
+                console.log(`searchYouTubeVideos: Found ${data.items.length} results.`);
+            } catch (error) {
+                console.error('searchYouTubeVideos: Network or API Error:', error);
+                showMessage("Failed to fetch videos. Please check your internet connection or try again later.");
+            } finally {
+                loadingIndicator.classList.add('hidden');
+            }
+        }
+
+        // --- Event Listeners ---
+
+        // Search button click
+        searchButton.addEventListener('click', () => {
+            const query = searchInput.value.trim();
+            if (query) {
+                searchYouTubeVideos(query);
+            } else {
+                showMessage("Please enter a search term.");
+            }
+        });
+
+        // Search input enter key
+        searchInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                searchButton.click();
+            }
+        });
+
+        // Play/Pause button click
+        playPauseButton.addEventListener('click', togglePlayPause);
+
+        // Next track button click
+        nextTrackButton.addEventListener('click', playNextTrack);
+
+        // Previous track button click
+        prevTrackButton.addEventListener('click', playPrevTrack);
+
+        // Progress bar seek
+        progressBar.addEventListener('input', () => {
+            if (player && typeof player.seekTo === 'function') {
+                player.seekTo(progressBar.value, true); // Seek to the new position
+            }
+        });
+
+        // Volume slider change
+        volumeSlider.addEventListener('input', () => {
+            if (player && typeof player.setVolume === 'function') {
+                const newVolume = parseInt(volumeSlider.value);
+                player.setVolume(newVolume);
+                lastVolume = newVolume; // Store last volume
+                updateVolumeIcon(); // Update icon when slider changes
+
+                // If slider is moved up from 0 while muted, unmute
+                if (player.isMuted() && newVolume > 0) {
+                    player.unMute();
+                } else if (!player.isMuted() && newVolume === 0) {
+                    // If slider is moved to 0 while not muted, mute
+                    player.mute();
+                }
+            }
+        });
+
+        // Mute button click
+        muteButton.addEventListener('click', () => {
+            if (!player) return;
+            if (player.isMuted()) {
+                player.unMute();
+                // Restore volume to last non-zero volume, or 50 if it was 0
+                const restoreVolume = lastVolume > 0 ? lastVolume : 50;
+                player.setVolume(restoreVolume);
+                volumeSlider.value = restoreVolume;
+            } else {
+                lastVolume = player.getVolume(); // Save current volume before muting
+                player.mute();
+                volumeSlider.value = 0; // Move slider to 0 visually
+            }
+            updateVolumeIcon();
+        });
+
+
+        // Close message box
+        messageCloseButton.addEventListener('click', hideMessageBox);
+
+        // Sidebar toggle for mobile
+        openSidebarButton.addEventListener('click', () => {
+            sidebar.classList.remove('-translate-x-full');
+        });
+
+        closeSidebarButton.addEventListener('click', () => {
+            sidebar.classList.add('-translate-x-full');
+        });
+
+        // Close sidebar when clicking outside on mobile
+        document.addEventListener('click', (event) => {
+            if (window.innerWidth < 768 && !sidebar.contains(event.target) && !openSidebarButton.contains(event.target) && !sidebar.classList.contains('-translate-x-full')) {
+                sidebar.classList.add('-translate-x-full');
+            }
+        });
+
+        // Navigation link event listeners
+        navHome.addEventListener('click', (e) => {
+            e.preventDefault();
+            showHomeView();
+        });
+        navSearch.addEventListener('click', (e) => {
+            e.preventDefault();
+            showSearchView();
+        });
+        navLibrary.addEventListener('click', (e) => {
+            e.preventDefault();
+            showLibraryView();
+        });
+
+
+        // --- Initialize YouTube IFrame Player API ---
+        // Load the IFrame Player API code asynchronously.
+        const tag = document.createElement('script');
+        tag.src = "https://www.youtube.com/iframe_api";
+        const firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+        // Initial view on page load
+        document.addEventListener('DOMContentLoaded', showHomeView);
+
+    </script>
+</body>
+</html>
